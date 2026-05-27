@@ -31,6 +31,8 @@ from .const import (
 )
 from connectlife.api import ConnectLifeApi
 
+from ._trir_api import TRIRConnectLifeApi
+
 _LOGGER = logging.getLogger(__name__)
 
 # Username/password are optional only because RU/TRIR users authenticate
@@ -59,7 +61,13 @@ STEP_REAUTH_TOKEN_SCHEMA = vol.Schema(
 
 
 def _build_api(data: dict[str, Any]) -> ConnectLifeApi:
-    """Build a ConnectLifeApi from a config entry's data dict."""
+    """Build a ConnectLifeApi from a config entry's data dict.
+
+    Returns either the upstream EU client (username/password) or our
+    TRIR subclass (refresh_token + source_id). The integration code
+    below this layer is agnostic to which mode is in use; everything
+    routes through the shared ``ConnectLifeApi`` surface.
+    """
     test_server_url = data.get(CONF_TEST_SERVER_URL)
     refresh_token = data.get(CONF_REFRESH_TOKEN)
     if refresh_token:
@@ -72,8 +80,7 @@ def _build_api(data: dict[str, Any]) -> ConnectLifeApi:
                 vol.Schema(vol.Url())(gateway_base_url)  # type: ignore[call-arg]
             except vol.Invalid as err:
                 raise InvalidAuth from err
-        return ConnectLifeApi(
-            test_server=test_server_url,
+        return TRIRConnectLifeApi(
             refresh_token=refresh_token,
             source_id=source_id,
             gateway_base_url=gateway_base_url,

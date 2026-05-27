@@ -12,6 +12,8 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.typing import ConfigType
 from connectlife.api import ConnectLifeApi, LifeConnectAuthError, LifeConnectError
 
+from ._trir_api import TRIRConnectLifeApi
+
 from .const import (
     CONF_DEVELOPMENT_MODE,
     CONF_GATEWAY_BASE_URL,
@@ -78,8 +80,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             # mid-refresh.
             hass.config_entries.async_update_entry(entry, data=new_data)
 
-        api = ConnectLifeApi(
-            test_server=test_server_url,
+        api = TRIRConnectLifeApi(
             refresh_token=refresh_token,
             source_id=entry.data[CONF_SOURCE_ID],
             gateway_base_url=entry.data.get(CONF_GATEWAY_BASE_URL) or None,
