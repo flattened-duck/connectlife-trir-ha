@@ -19,24 +19,76 @@ from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 
-from .const import CONF_DEVICES, CONF_DEVELOPMENT_MODE, CONF_DISABLE_BEEP, CONF_TEST_SERVER_URL, DOMAIN
+from .const import (
+    CONF_DEVICES,
+    CONF_DEVELOPMENT_MODE,
+    CONF_DISABLE_BEEP,
+    CONF_GATEWAY_BASE_URL,
+    CONF_REFRESH_TOKEN,
+    CONF_SOURCE_ID,
+    CONF_TEST_SERVER_URL,
+    DOMAIN,
+)
 from connectlife.api import ConnectLifeApi
 
 _LOGGER = logging.getLogger(__name__)
 
+# Username/password are optional only because RU/TRIR users authenticate
+# with a captured refresh_token + source_id instead. validate_input enforces
+# that one of the two valid combinations is present.
 STEP_USER_DATA_SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_USERNAME): str,
-        vol.Required(CONF_PASSWORD): str,
+        vol.Optional(CONF_USERNAME): str,
+        vol.Optional(CONF_PASSWORD): str,
+        vol.Optional(CONF_REFRESH_TOKEN): str,
+        vol.Optional(CONF_SOURCE_ID): str,
+        vol.Optional(CONF_GATEWAY_BASE_URL): str,
     }
 )
+
+# Re-auth schemas only ask for the fields relevant to the entry's mode so
+# users aren't asked to re-enter unrelated credentials (and we don't risk
+# mixing token-mode with stale username/password input).
+STEP_REAUTH_PASSWORD_SCHEMA = vol.Schema({vol.Required(CONF_PASSWORD): str})
+STEP_REAUTH_TOKEN_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_REFRESH_TOKEN): str,
+        vol.Optional(CONF_SOURCE_ID): str,
+    }
+)
+
+
+def _build_api(data: dict[str, Any]) -> ConnectLifeApi:
+    """Build a ConnectLifeApi from a config entry's data dict."""
+    test_server_url = data.get(CONF_TEST_SERVER_URL)
+    refresh_token = data.get(CONF_REFRESH_TOKEN)
+    if refresh_token:
+        source_id = data.get(CONF_SOURCE_ID)
+        if not source_id:
+            raise InvalidAuth
+        gateway_base_url = data.get(CONF_GATEWAY_BASE_URL) or None
+        if gateway_base_url:
+            try:
+                vol.Schema(vol.Url())(gateway_base_url)  # type: ignore[call-arg]
+            except vol.Invalid as err:
+                raise InvalidAuth from err
+        return ConnectLifeApi(
+            test_server=test_server_url,
+            refresh_token=refresh_token,
+            source_id=source_id,
+            gateway_base_url=gateway_base_url,
+        )
+    username = data.get(CONF_USERNAME)
+    password = data.get(CONF_PASSWORD)
+    if not (username and password):
+        raise InvalidAuth
+    return ConnectLifeApi(username, password, test_server_url)  # type: ignore[arg-type]
 
 
 async def validate_input(data: dict[str, Any]) -> dict[str, Any]:
     """Validate the user input allows us to connect."""
 
-    test_server_url = data[CONF_TEST_SERVER_URL] if CONF_TEST_SERVER_URL in data else None
-    api = ConnectLifeApi(data[CONF_USERNAME], data[CONF_PASSWORD], test_server_url)  # type: ignore[arg-type]
+    api = _build_api(data)
 
     if not await api.authenticate():
         raise InvalidAuth
@@ -47,7 +99,11 @@ async def validate_input(data: dict[str, Any]) -> dict[str, Any]:
     # InvalidAuth
 
     # Return info that you want to store in the config entry.
-    return {"title": f"ConnectLife ({data[CONF_USERNAME]})"}
+    if data.get(CONF_REFRESH_TOKEN):
+        title = "ConnectLife.RU"
+    else:
+        title = f"ConnectLife ({data[CONF_USERNAME]})"
+    return {"title": title}
 
 
 class ConnectLifeConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -87,9 +143,13 @@ class ConnectLifeConfigFlow(ConfigFlow, domain=DOMAIN):
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
         """Handle re-authentication confirmation."""
+        reauth_entry = self._get_reauth_entry()
+        token_mode = bool(reauth_entry.data.get(CONF_REFRESH_TOKEN))
+        schema = (
+            STEP_REAUTH_TOKEN_SCHEMA if token_mode else STEP_REAUTH_PASSWORD_SCHEMA
+        )
         errors: dict[str, str] = {}
         if user_input is not None:
-            reauth_entry = self._get_reauth_entry()
             data = {**reauth_entry.data, **user_input}
             try:
                 await validate_input(data)
@@ -105,7 +165,7 @@ class ConnectLifeConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="reauth_confirm",
-            data_schema=STEP_USER_DATA_SCHEMA,
+            data_schema=schema,
             errors=errors,
         )
 

@@ -11,6 +11,13 @@ CONF_DEVELOPMENT_MODE = "development_mode"
 CONF_DISABLE_BEEP = "disable_beep"
 CONF_TEST_SERVER_URL = "test_server_url"
 
+# Token-mode (ConnectLife.RU / TRIR) authentication fields. Required when
+# the account is registered against a non-Gigya Russian backend; the
+# username/password flow doesn't work for those users.
+CONF_REFRESH_TOKEN = "refresh_token"
+CONF_SOURCE_ID = "source_id"
+CONF_GATEWAY_BASE_URL = "gateway_base_url"
+
 # Set by the orphaned-statistics repair flow once the user clicks Clear or
 # Ignore. While unset, every setup runs orphan detection so the repair
 # survives missed restarts; once set, detection is skipped permanently for
