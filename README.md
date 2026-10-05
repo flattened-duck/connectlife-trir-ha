@@ -1,27 +1,39 @@
-# ConnectLife.TRIR
+# ConnectLife.TRIR for Home Assistant
 
-ConnectLife.TRIR integration for Home Assistant
+A personal, unofficial fork of [oyvindwe/connectlife-ha](https://github.com/oyvindwe/connectlife-ha) that adds support for accounts of [ConnectLife.TRIR](https://play.google.com/store/apps/details?id=com.hisense.connectlife.trir), the CIS version of the ConnectLife app.
 
-[![BuyMeCoffee](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/oyvindwev)
+Upstream can't log these users in (see [bilan/connectlife-api-connector#25](https://github.com/bilan/connectlife-api-connector/issues/25)): their accounts live on a separate Hisense backend that rejects the standard Gigya login.
+
+## What this fork changes
+
+- **Token login.** Authenticates with a refresh token and `sourceId` captured from the mobile app instead of a username and password.
+- **CIS gateway.** Requests go to `clife-ru2-gateway.hijuconn.com`, which accepts the same signed request format as the EU gateway.
+- **Token rotation.** The server issues a new refresh token on every refresh (access tokens last 24 h, refresh tokens 30 days). The integration saves each new token to its config entry without reloading, so it keeps working as long as Home Assistant runs at least once a month. The phone app keeps working in parallel.
+- **Small footprint.** All of it lives in one subclass of the upstream client, [`_trir_api.py`](custom_components/connectlife/_trir_api.py), plus the config flow. Device mappings are unchanged, and the EU username/password login still works.
+
+Tested with two Hisense split air conditioners, AS-18UW4RMSHB01 and AS-07UW4RYRKA01: full control from Home Assistant works, including power, HVAC modes (auto, cool, heat and others), target temperature, fan speed and swing.
 
 ## Installation
 
-You can install using HACS or download.
-
 ### HACS
-If you have HACS installed, add this repository (`flattened-duck/connectlife-trir-ha`) as a custom repository of type "Integration."
-
-See https://hacs.xyz/docs/faq/custom_repositories/ 
+Add this repository (`flattened-duck/connectlife-trir-ha`) as a custom repository of type "Integration" and install it.
+See https://hacs.xyz/docs/faq/custom_repositories/
 
 ### Download
+Download the `connectlife` directory and place it in your `<config>/custom_components/`.
 
-Download the `connectlife` directory and place in your `<config>/custom_components/`.
+Restart Home Assistant after installing.
 
-After installing, you need to restart Home Assistant.
+## Setup
 
-Finally, add "ConnectLife" as an integration in the UI, and provide the username and password for your ConnectLife account.
+1. **Capture the tokens.** Install [HTTP Toolkit](https://httptoolkit.com) on your computer and connect your Android phone to it. Log in to the ConnectLife.TRIR app or refresh a screen, then look through the captured requests and responses for `refreshToken` and `sourceId`. Proxy-based tools such as Charles may not see this traffic: the app is built with Flutter, and its networking doesn't go through them.
+2. **Add the integration.** Go to Settings → Devices & services → Add integration → ConnectLife. Leave username and password empty and fill in the refresh token and source ID. The gateway URL is optional and defaults to the CIS gateway.
 
-Your device and all their status values should show up.
+If the refresh token expires, Home Assistant asks you to re-authenticate: capture a fresh token the same way.
+
+Known limitation: if Home Assistant shuts down uncleanly within about a second of a token rotation, the new token can be lost, and you need to capture a fresh one.
+
+Everything below is the upstream documentation, which applies to this fork as well.
 
 ## Supported ConnectLife devices
 
@@ -103,11 +115,6 @@ Missing features:
 - Setting state except to off/one defined state
 - Setting `target_temperature_high`/`target_temperature_low`
 
-### Login
-
-You should retrieve access token from the real app to get access. Recommended to use `HTTP Toolkit`
-for auth response sniffing.
-
 ### Updated Terms & Conditions
 
 ConnectLife periodically updates their Terms & Conditions. When this happens, the integration may stop working
@@ -128,6 +135,10 @@ The language change is needed because updated Terms & Conditions are often only 
 The app skips the acceptance prompt if the translated version for your language doesn't exist yet, but the
 backend still requires acceptance.
 
-## Contributing
+## Credits and license
 
-See [DEVELOPMENT.md](DEVELOPMENT.md).
+Based on [connectlife-ha](https://github.com/oyvindwe/connectlife-ha) by Øyvind Matheson Wergeland. Device support, mappings and most of the code come from upstream; if this integration is useful to you, consider [supporting the upstream author](https://www.buymeacoffee.com/oyvindwev).
+
+Issues specific to ConnectLife.TRIR belong in this repository; everything else, in [upstream](https://github.com/oyvindwe/connectlife-ha/issues). For development, see [DEVELOPMENT.md](DEVELOPMENT.md).
+
+Licensed under GPL-3.0, the same as upstream.
